@@ -34,7 +34,6 @@ func main() {
 }
 
 func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
-
 	features := []int{2, 3, 4, 5, 6, 7, 8, 9, 10}
 	labels := []int{1}
 
@@ -55,6 +54,7 @@ func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
 		Col_types   []string         `json:"col_types"`
 		Onehot_cols map[int][]string `json:"onehot_cols"`
 	}
+
 	var table_info = TableInfo{}
 	table_info.Labels = labels
 	table_info.Features = features
@@ -104,15 +104,11 @@ func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
 		i = i + 1
 
 		col_infos = append(col_infos, col_info)
-
 		col_types = append(col_types, col_type)
 		col_names = append(col_names, col_name)
 	}
 
 	table_info.Col_types = col_types
-
-	// var one_hots []OneHot
-
 	var one_hots = make(map[int][]string)
 
 	for _, row := range col_infos {
@@ -143,13 +139,9 @@ func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
 
 		one_hots[row.index] = value_array
 		table_info.Onehot_cols = one_hots
-
 	}
-
 	result_json, err := json.Marshal(table_info)
-
 	return string(result_json)
-
 }
 
 func stringContainsOneOfSlice(str string, list []string) bool {
