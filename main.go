@@ -34,13 +34,8 @@ func main() {
 }
 
 func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
-	features := []int{2, 3, 4, 5, 6, 7, 8, 9, 10}
+	features := []int{1, 2}
 	labels := []int{1}
-
-	type OneHot struct {
-		Index    int
-		Elements []string
-	}
 
 	type ColInfo struct {
 		index    int
@@ -53,6 +48,8 @@ func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
 		Labels      []int            `json:"labels"`
 		Col_types   []string         `json:"col_types"`
 		Onehot_cols map[int][]string `json:"onehot_cols"`
+		Avg         map[int]float64  `json:"avg"`
+		VarPop      map[int]float64  `json:"var_pop"`
 	}
 
 	var table_info = TableInfo{}
@@ -63,6 +60,16 @@ func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
 	all_string_types := []string{}
 	all_string_types = append(all_string_types, "text")
 	all_string_types = append(all_string_types, "char")
+
+	//a list holds all the types for one-hot.
+	all_number_types := []string{}
+	all_number_types = append(all_number_types, "smallint")
+	all_number_types = append(all_number_types, "int")
+	all_number_types = append(all_number_types, "integer")
+	all_number_types = append(all_number_types, "bigint")
+	all_number_types = append(all_number_types, "real")
+	all_number_types = append(all_number_types, "double precision")
+	all_number_types = append(all_number_types, "numeric")
 
 	defer db.Close()
 
@@ -137,9 +144,50 @@ func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
 			value_array = append(value_array, str_value)
 		}
 
-		one_hots[row.index] = value_array
+		if len(value_array) > 1 {
+			one_hots[row.index] = value_array
+		}
 		table_info.Onehot_cols = one_hots
 	}
+
+	//avg and var_pop
+
+	var avgs = make(map[int]float64)
+	var var_pops = make(map[int]float64)
+
+	for _, row := range col_infos {
+
+		// filt column sin features array
+		if !IntInSlice(row.index, features) {
+			continue
+		}
+
+		//filt columns that are of string type, thus could be used as one hot.
+		if !stringContainsOneOfSlice(row.col_type, all_number_types) {
+			continue
+		}
+
+		sqlStatement = fmt.Sprintf("select avg(\"%s\"), var_pop(\"%s\") from %s ", row.col_name, row.col_name, table_name)
+		rows, err = db.Query(sqlStatement)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		for rows.Next() {
+			var avg_value float64
+			var var_value float64
+
+			rows.Scan(&avg_value, &var_value)
+
+			avgs[row.index] = avg_value
+			var_pops[row.index] = var_value
+
+		}
+
+		table_info.Avg = avgs
+		table_info.VarPop = var_pops
+	}
+
 	result_json, err := json.Marshal(table_info)
 	return string(result_json)
 }
