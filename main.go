@@ -87,6 +87,9 @@ func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
 	all_number_types = append(all_number_types, "real")
 	all_number_types = append(all_number_types, "double precision")
 	all_number_types = append(all_number_types, "numeric")
+	//for date and time
+	all_number_types = append(all_number_types, "date")
+	all_number_types = append(all_number_types, "time")
 
 	defer db.Close()
 
@@ -115,7 +118,8 @@ func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
 		var col_info = ColInfo{}
 
 		rows.Scan(&col_name, &col_type)
-		if strings.Contains(col_type, "timestamp") {
+		var origin_type = col_type
+		if strings.Contains(col_type, "time") {
 			col_type = "long"
 		}
 		if strings.Contains(col_type, "date") {
@@ -123,7 +127,7 @@ func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
 		}
 
 		col_info.col_name = col_name
-		col_info.col_type = col_type
+		col_info.col_type = origin_type
 		col_info.index = i
 		i = i + 1
 
@@ -184,7 +188,16 @@ func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
 			continue
 		}
 
-		sqlStatement = fmt.Sprintf("select avg(\"%s\"), var_pop(\"%s\") from %s ", row.col_name, row.col_name, table_name)
+		if strings.Contains(row.col_type, "time") || strings.Contains(row.col_type, "date") ||
+			strings.Contains(row.col_type, "interval") {
+			// slect avg(extract(epoch from dateoftransfer AT TIME ZONE 'UTC')) from pricepaid_orc
+			sqlStatement = fmt.Sprintf("select avg(extract(epoch from \"%s\" AT TIME ZONE 'UTC')), var_pop(extract(epoch from \"%s\"AT TIME ZONE 'UTC')) from %s ", row.col_name, row.col_name, table_name)
+
+		} else {
+			sqlStatement = fmt.Sprintf("select avg(\"%s\"), var_pop(\"%s\") from %s ", row.col_name, row.col_name, table_name)
+
+		}
+
 		rows, err = db.Query(sqlStatement)
 		if err != nil {
 			log.Fatal(err)

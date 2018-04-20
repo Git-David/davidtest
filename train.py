@@ -10,7 +10,6 @@ with open(temp_namedpipe, 'r') as read_fifo:
         filecontent = read_fifo.read()
         if len(filecontent) == 0:
                 os.remove(temp_namedpipe)
-
                 break
         else:
             file.write(filecontent) 
