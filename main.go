@@ -5,7 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"os/exec"
 	"strings"
+	"syscall"
+
+	uuid "github.com/satori/go.uuid"
 
 	_ "github.com/lib/pq"
 )
@@ -29,12 +34,24 @@ func main() {
 		panic(err)
 	}
 	var re = GetDBTableInfoForTraining(db, "pricepaid_orc")
-	fmt.Println(re)
+
+	temp_namedpipe := "/tmp/temp_namedpipe_" + uuid.Must(uuid.NewV4()).String()
+
+	syscall.Mkfifo(temp_namedpipe, 0600)
+
+	cmd := exec.Command("python3", "train.py", temp_namedpipe)
+	cmd.Start()
+
+	// to open pipe to write
+	pipefile, _ := os.OpenFile(temp_namedpipe, os.O_WRONLY|os.O_SYNC, 0600)
+
+	pipefile.WriteString(re)
+	pipefile.Close()
 
 }
 
 func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
-	features := []int{1, 2}
+	features := []int{2, 3, 4, 5, 6, 7, 8, 9, 10}
 	labels := []int{1}
 
 	type ColInfo struct {

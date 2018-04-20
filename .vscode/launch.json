@@ -5,6 +5,31 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Python",
+      "type": "python",
+      "request": "launch",
+      "stopOnEntry": false,
+      "pythonPath": "${config:python.pythonPath}",
+      "program": "${file}",
+      "cwd": "${workspaceFolder}",
+      "env": {},
+      "args": [
+        // "--url=http://0.0.0.0:18080/littleboy/model/trained",
+        // "--instanceid=7b07dcf0-045a-4982-abc9-5cb7d8b95a64",
+        // "--location=/tmp/b2f88e5b-298c-48c4-8888-2ef910df74f4",
+        // "--dataloc=hdfs://localhost:9000/hawq_default/dfs_default/davidliu/public/housing",
+        // "--version=1",
+        // "--batch_size=10000"
+      ],
+      // "args": [
+      //     "--checkpoint_dir=/Users/chentianyou/dev/model/mnist/model.ckp",
+      //     "--output_dir=/Users/chentianyou/dev/model/mnist",
+      //     "--input_dim=8"
+      // ],
+      "envFile": "${workspaceFolder}/.env",
+      "debugOptions": ["RedirectOutput"]
+    },
+    {
       "name": "Launch",
       "type": "go",
       "request": "launch",
