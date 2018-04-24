@@ -17,6 +17,12 @@ import (
 
 func main() {
 
+	var re = StartTrainModel()
+	print(re)
+
+}
+
+func StartTrainModel() bool {
 	const (
 		host     = "localhost"
 		port     = 5433
@@ -33,14 +39,20 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	var re = GetDBTableInfoForTraining(db, "pricepaid_orc")
+	var re = GetDBTableInfoForTraining(db, "pricepaid_train")
 
 	temp_namedpipe := "/tmp/temp_namedpipe_" + uuid.Must(uuid.NewV4()).String()
 
 	syscall.Mkfifo(temp_namedpipe, 0600)
 
 	cmd := exec.Command("python3", "train.py", temp_namedpipe)
-	cmd.Start()
+	// cmd.Start()
+
+	err = cmd.Start()
+	if err != nil {
+		log.Printf(err.Error())
+		return false
+	}
 
 	// to open pipe to write
 	pipefile, _ := os.OpenFile(temp_namedpipe, os.O_WRONLY|os.O_SYNC, 0600)
@@ -48,10 +60,14 @@ func main() {
 	pipefile.WriteString(re)
 	pipefile.Close()
 
+	return true
+
 }
 
 func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
 	features := []int{2, 3, 4, 5, 6, 7, 8, 9, 10}
+	// features := []int{2}
+
 	labels := []int{1}
 
 	type ColInfo struct {
@@ -61,24 +77,25 @@ func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
 	}
 
 	type TableInfo struct {
-		Features    []int            `json:"features"`
-		Labels      []int            `json:"labels"`
-		Col_types   []string         `json:"col_types"`
-		Onehot_cols map[int][]string `json:"onehot_cols"`
-		Avg         map[int]float64  `json:"avg"`
-		VarPop      map[int]float64  `json:"var_pop"`
+		Features    []int           `json:"features"`
+		Labels      []int           `json:"labels"`
+		Col_types   []string        `json:"col_types"`
+		Onehot_cols map[int]int     `json:"onehot_cols"`
+		Avg         map[int]float64 `json:"avg"`
+		VarPop      map[int]float64 `json:"var_pop"`
 	}
 
 	var table_info = TableInfo{}
 	table_info.Labels = labels
 	table_info.Features = features
 
-	//a list holds all the types for one-hot.
+	//a list holds all the "string" types for one-hot.
 	all_string_types := []string{}
 	all_string_types = append(all_string_types, "text")
 	all_string_types = append(all_string_types, "char")
+	all_string_types = append(all_string_types, "varchar")
 
-	//a list holds all the types for one-hot.
+	//a list holds all the types of numbers, could be calculated for mean and var.
 	all_number_types := []string{}
 	all_number_types = append(all_number_types, "smallint")
 	all_number_types = append(all_number_types, "int")
@@ -87,7 +104,7 @@ func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
 	all_number_types = append(all_number_types, "real")
 	all_number_types = append(all_number_types, "double precision")
 	all_number_types = append(all_number_types, "numeric")
-	//for date and time
+	//date and time are also considered as numbers as they stored as seconds in db.
 	all_number_types = append(all_number_types, "date")
 	all_number_types = append(all_number_types, "time")
 
@@ -136,8 +153,34 @@ func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
 		col_names = append(col_names, col_name)
 	}
 
-	table_info.Col_types = col_types
-	var one_hots = make(map[int][]string)
+	//type mapping for tensorflow
+	postgres_tensorflow_typemapping := make(map[string]string)
+	postgres_tensorflow_typemapping["text"] = "tf.string"
+	postgres_tensorflow_typemapping["char"] = "tf.string"
+	postgres_tensorflow_typemapping["varchar"] = "tf.string"
+
+	postgres_tensorflow_typemapping["smallint"] = "tf.int64"
+	postgres_tensorflow_typemapping["int"] = "tf.int64"
+	postgres_tensorflow_typemapping["integer"] = "tf.int64"
+	postgres_tensorflow_typemapping["bigint"] = "tf.int64"
+	postgres_tensorflow_typemapping["long"] = "tf.int64"
+
+	postgres_tensorflow_typemapping["real"] = "tf.float32"
+	postgres_tensorflow_typemapping["double precision"] = "tf.float32"
+	postgres_tensorflow_typemapping["numeric"] = "tf.float32"
+
+	tensorflow_types := []string{}
+	for _, col_type := range col_types {
+		if value, ok := postgres_tensorflow_typemapping[col_type]; ok {
+			tensorflow_types = append(tensorflow_types, value)
+		} else {
+			fmt.Println("key not found in postgres_tensorflow_typemapping")
+		}
+
+	}
+
+	table_info.Col_types = tensorflow_types
+	var one_hots = make(map[int]int)
 
 	for _, row := range col_infos {
 
@@ -151,23 +194,25 @@ func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
 			continue
 		}
 
-		sqlStatement = fmt.Sprintf("select DISTINCT %s from %s order by %s", row.col_name, table_name, row.col_name)
+		sqlStatement = fmt.Sprintf("select count(DISTINCT %s) from %s", row.col_name, table_name)
 		rows, err = db.Query(sqlStatement)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		value_array := []string{}
+		// value_array := []string{}
+		var count_value int
 
 		for rows.Next() {
-			var str_value string
-			rows.Scan(&str_value)
-			value_array = append(value_array, str_value)
+			rows.Scan(&count_value)
+			// value_array = append(value_array, str_value)
 		}
 
-		if len(value_array) > 1 {
-			one_hots[row.index] = value_array
-		}
+		one_hots[row.index] = count_value
+
+		// if len(value_array) > 1 {
+		// 	one_hots[row.index] = value_array
+		// }
 		table_info.Onehot_cols = one_hots
 	}
 
@@ -183,7 +228,7 @@ func GetDBTableInfoForTraining(db *sql.DB, table_name string) string {
 			continue
 		}
 
-		//filt columns that are of string type, thus could be used as one hot.
+		//filt columns that are of numbver type, thus could be calcuated for avg and var_pop.
 		if !stringContainsOneOfSlice(row.col_type, all_number_types) {
 			continue
 		}
